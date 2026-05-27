@@ -919,20 +919,15 @@
             notify('已停止当前请求', 'info');
         }
 
-        // 带退避指数的容错网络请求；useCorsProxy=true 时经 corsproxy 转发（用于 Grsai 等未开放 CORS 的接口）
-        async function fetchWithExponentialBackoff(url, options, retries = 3, delay = 1000, useCorsProxy = false) {
+        // 带退避指数的容错网络请求（全部直连，不经第三方代理）
+        async function fetchWithExponentialBackoff(url, options, retries = 3, delay = 1000) {
             const signal = options?.signal;
             if (signal?.aborted) {
                 throw new DOMException('Aborted', 'AbortError');
             }
 
-            const isLocal = url.includes('localhost') || url.includes('127.0.0.1');
-            const requestUrl = (!useCorsProxy || isLocal)
-                ? url
-                : 'https://corsproxy.io/?' + encodeURIComponent(url);
-
             try {
-                const res = await fetch(requestUrl, options);
+                const res = await fetch(url, options);
                 if (!res.ok) {
                     const errBody = await res.text();
                     let errMsg = `状态码 ${res.status}`;
@@ -960,7 +955,7 @@
                 }
                 if (retries > 0) {
                     await abortableDelay(delay, signal);
-                    return fetchWithExponentialBackoff(url, options, retries - 1, delay * 2, useCorsProxy);
+                    return fetchWithExponentialBackoff(url, options, retries - 1, delay * 2);
                 }
                 throw err;
             }
@@ -1072,21 +1067,15 @@
             };
 
             try {
-                const response = await fetchWithExponentialBackoff(
-                    `${DEEPSEEK_BASE_URL}/chat/completions`,
-                    {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
-                        },
-                        body: JSON.stringify(payload),
-                        signal: getActiveAbortSignal()
+                const response = await fetchWithExponentialBackoff(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
                     },
-                    3,
-                    1000,
-                    false
-                );
+                    body: JSON.stringify(payload),
+                    signal: getActiveAbortSignal()
+                });
 
                 const data = await response.json();
                 removeLoaderFromTimeline(loaderId);
@@ -1166,18 +1155,12 @@
             for (let attempt = 0; attempt < maxAttempts; attempt++) {
                 await abortableDelay(attempt === 0 ? 800 : 2000, signal);
 
-                const res = await fetchWithExponentialBackoff(
-                    BANANA_RESULT_URL,
-                    {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({ id: taskId }),
-                        signal
-                    },
-                    3,
-                    1000,
-                    true
-                );
+                const res = await fetchWithExponentialBackoff(BANANA_RESULT_URL, {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ id: taskId }),
+                    signal
+                });
                 const data = await res.json();
 
                 const imageUrl = extractBananaImageUrl(data);
@@ -1202,18 +1185,12 @@
             };
             const payload = buildBananaDrawPayload(promptText);
 
-            const response = await fetchWithExponentialBackoff(
-                BANANA_DRAW_URL,
-                {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify(payload),
-                    signal: getActiveAbortSignal()
-                },
-                3,
-                1000,
-                true
-            );
+            const response = await fetchWithExponentialBackoff(BANANA_DRAW_URL, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(payload),
+                signal: getActiveAbortSignal()
+            });
             const data = await response.json();
 
             const immediateUrl = extractBananaImageUrl(data);
