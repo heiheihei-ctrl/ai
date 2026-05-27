@@ -843,14 +843,15 @@
             notify("所有模型会话上下文已成功复位。", "info");
         }
 
-        // 带退避指数的容错网络请求包装器，并集成了智能 CORS 代理转换以修复 Failed to fetch
-        async function fetchWithExponentialBackoff(url, options, retries = 3, delay = 1000) {
-            // 利用 corsproxy.io 处理前端沙盒环境对深层第三方 API (如 grsai.ai / api.deepseek.com) 发起调用时的 CORS 阻断
+        // 带退避指数的容错网络请求；useCorsProxy=true 时经 corsproxy 转发（用于 Grsai 等未开放 CORS 的接口）
+        async function fetchWithExponentialBackoff(url, options, retries = 3, delay = 1000, useCorsProxy = false) {
             const isLocal = url.includes('localhost') || url.includes('127.0.0.1');
-            const proxiedUrl = isLocal ? url : 'https://corsproxy.io/?' + encodeURIComponent(url);
+            const requestUrl = (!useCorsProxy || isLocal)
+                ? url
+                : 'https://corsproxy.io/?' + encodeURIComponent(url);
 
             try {
-                const res = await fetch(proxiedUrl, options);
+                const res = await fetch(requestUrl, options);
                 if (!res.ok) {
                     const errBody = await res.text();
                     let errMsg = `状态码 ${res.status}`;
@@ -877,7 +878,7 @@
                 }
                 if (retries > 0) {
                     await new Promise(resolve => setTimeout(resolve, delay));
-                    return fetchWithExponentialBackoff(url, options, retries - 1, delay * 2);
+                    return fetchWithExponentialBackoff(url, options, retries - 1, delay * 2, useCorsProxy);
                 }
                 throw err;
             }
@@ -977,14 +978,20 @@
             };
 
             try {
-                const response = await fetchWithExponentialBackoff(`${DEEPSEEK_BASE_URL}/chat/completions`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+                const response = await fetchWithExponentialBackoff(
+                    `${DEEPSEEK_BASE_URL}/chat/completions`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
+                        },
+                        body: JSON.stringify(payload)
                     },
-                    body: JSON.stringify(payload)
-                });
+                    3,
+                    1000,
+                    false
+                );
 
                 const data = await response.json();
                 removeLoaderFromTimeline(loaderId);
@@ -1058,11 +1065,17 @@
             for (let attempt = 0; attempt < maxAttempts; attempt++) {
                 await new Promise(r => setTimeout(r, attempt === 0 ? 800 : 2000));
 
-                const res = await fetchWithExponentialBackoff(BANANA_RESULT_URL, {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({ id: taskId })
-                });
+                const res = await fetchWithExponentialBackoff(
+                    BANANA_RESULT_URL,
+                    {
+                        method: 'POST',
+                        headers,
+                        body: JSON.stringify({ id: taskId })
+                    },
+                    3,
+                    1000,
+                    true
+                );
                 const data = await res.json();
 
                 const imageUrl = extractBananaImageUrl(data);
@@ -1087,11 +1100,17 @@
             };
             const payload = buildBananaDrawPayload(promptText);
 
-            const response = await fetchWithExponentialBackoff(BANANA_DRAW_URL, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(payload)
-            });
+            const response = await fetchWithExponentialBackoff(
+                BANANA_DRAW_URL,
+                {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify(payload)
+                },
+                3,
+                1000,
+                true
+            );
             const data = await response.json();
 
             const immediateUrl = extractBananaImageUrl(data);
