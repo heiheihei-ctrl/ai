@@ -131,12 +131,6 @@
                 <div id="conversations-list" class="flex-1 overflow-y-auto px-3 space-y-1.5 pb-4">
                     <!-- 动态填充位置 -->
                 </div>
-
-                <!-- 侧边栏底部说明 -->
-                <div class="p-4 border-t border-slate-200 dark:border-slate-800 text-[10px] text-slate-400 flex flex-col gap-1">
-                    <p class="flex items-center gap-1"><i class="fa-solid fa-sd-card"></i> 存储：LocalStorage 浏览器缓存</p>
-                    <p class="text-[9px] opacity-80">配置说明：API 密钥已安全硬编码于程序源码内</p>
-                </div>
             </div>
         </aside>
 
@@ -311,18 +305,13 @@
                                     <span>添加图片</span>
                                     <input id="img-upload-input" type="file" accept="image/*" class="hidden" onchange="previewSelectedAttachment(this)">
                                 </label>
-                                <!-- 实时的判定分流指示 -->
-                                <span id="routing-preview-tag" class="text-[9px] bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 px-2 py-1 rounded font-medium border border-slate-200/50 dark:border-slate-800">
-                                    自适应判定
-                                </span>
                             </div>
 
                             <div class="flex items-center gap-2">
                                 <button id="btn-pause-request" type="button" onclick="pauseActiveRequest()" disabled
-                                    class="h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 font-bold text-xs transition flex items-center justify-center gap-1.5 opacity-40 cursor-not-allowed shadow-xs"
+                                    class="h-8 w-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition flex items-center justify-center opacity-40 cursor-not-allowed shadow-xs"
                                     title="停止当前进行中的请求">
-                                    <i class="fa-solid fa-stop text-[10px] text-rose-500"></i>
-                                    <span>停止</span>
+                                    <i class="fa-solid fa-stop text-xs text-rose-500"></i>
                                 </button>
                                 <button onclick="handleSendMessage()" class="bg-gradient-to-tr from-brand-deepseek to-brand-accent hover:opacity-95 text-white font-bold h-8 px-4 rounded-lg transition flex items-center justify-center text-xs shadow-md">
                                     <i class="fa-solid fa-paper-plane mr-1.5"></i> 发送
