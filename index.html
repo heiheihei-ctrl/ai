@@ -397,7 +397,7 @@
                         const value = opt.dataset.value;
                         const label = opt.dataset.label || opt.textContent.trim();
                         hidden.value = value;
-                        labelEl.textContent = label;
+                        if (labelEl) labelEl.textContent = label;
                         options.forEach(o => o.classList.remove('selected'));
                         opt.classList.add('selected');
                         menu.classList.add('hidden');
@@ -724,10 +724,12 @@
         }
 
         function analyseInputAndPreviewRoute() {
-            const inputVal = document.getElementById('unified-user-input').value;
-            const hasAttachment = state.banana.uploadedBase64 !== null;
-            const routerMode = document.getElementById('router-mode').value;
             const tag = document.getElementById('routing-preview-tag');
+            if (!tag) return;
+
+            const inputVal = document.getElementById('unified-user-input')?.value || '';
+            const hasAttachment = state.banana.uploadedBase64 !== null;
+            const routerMode = document.getElementById('router-mode')?.value || 'auto';
 
             if (routerMode !== 'auto') {
                 tag.textContent = routerMode === 'deepseek' ? 'DeepSeek 直连' : 'Nano Banana 创意';
@@ -796,7 +798,9 @@
                     const fileNameText = document.getElementById('upload-file-name');
 
                     previewImg.src = e.target.result;
-                    fileNameText.textContent = file.name.length > 20 ? file.name.substring(0, 17) + "..." : file.name;
+                    if (fileNameText) {
+                        fileNameText.textContent = file.name.length > 20 ? file.name.substring(0, 17) + "..." : file.name;
+                    }
                     
                     previewBar.classList.remove('hidden');
                     
@@ -1139,10 +1143,6 @@
             return null;
         }
 
-        function extractBananaContent(raw) {
-            return getBananaPayload(raw)?.results?.[0]?.content || '';
-        }
-
         function getBananaErrorMessage(raw) {
             if (raw?.code !== undefined && raw.code !== 0) {
                 return raw.msg || raw.message || `接口返回错误 (code: ${raw.code})`;
@@ -1151,16 +1151,30 @@
             return payload?.failure_reason || payload?.error || raw?.msg || '';
         }
 
-        function isBananaSucceeded(raw) {
-            if (raw?.code !== undefined && raw.code !== 0) return false;
-            return getBananaStatus(raw) === 'succeeded';
-        }
-
         function updateBananaLoaderProgress(loaderId, progress, statusText) {
+            if (!loaderId) return;
             const loader = document.getElementById(loaderId);
             if (!loader) return;
             const sub = loader.querySelector('.loader-status-text');
-            if (sub) sub.textContent = statusText || `渲染进度 ${progress ?? 0}%`;
+            if (!sub) return;
+            sub.textContent = statusText || `渲染进度 ${progress ?? 0}%`;
+        }
+
+        /** 解析 Grsai 响应：成功返回图片 URL，失败抛出 Error */
+        function resolveBananaApiResult(raw) {
+            if (raw?.code !== undefined && raw.code !== 0) {
+                throw new Error(getBananaErrorMessage(raw) || '接口返回错误');
+            }
+            const status = getBananaStatus(raw);
+            if (status === 'failed') {
+                throw new Error(getBananaErrorMessage(raw) || 'Nano Banana 图像生成失败');
+            }
+            if (status === 'succeeded') {
+                const imageUrl = extractBananaImageUrl(raw);
+                if (imageUrl) return imageUrl;
+                throw new Error('任务已成功但未返回图片地址');
+            }
+            return null;
         }
 
         async function pollBananaDrawResult(taskId, loaderId) {
@@ -1169,7 +1183,6 @@
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${BANANA_API_KEY}`
             };
-
             const signal = getActiveAbortSignal();
 
             for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -1182,22 +1195,10 @@
                     signal
                 });
                 const raw = await res.json();
+                const imageUrl = resolveBananaApiResult(raw);
+                if (imageUrl) return imageUrl;
 
-                if (raw?.code !== undefined && raw.code !== 0) {
-                    throw new Error(getBananaErrorMessage(raw));
-                }
-
-                const status = getBananaStatus(raw);
-                const imageUrl = extractBananaImageUrl(raw);
                 const progress = getBananaProgress(raw);
-
-                if (status === 'succeeded' && imageUrl) {
-                    return { imageUrl, content: extractBananaContent(raw) };
-                }
-                if (status === 'failed') {
-                    throw new Error(getBananaErrorMessage(raw) || 'Nano Banana 图像生成失败');
-                }
-
                 updateBananaLoaderProgress(loaderId, progress, `Nano Banana 渲染中… ${progress}%`);
             }
             throw new Error('Nano Banana 生成超时，请稍后重试');
@@ -1218,18 +1219,12 @@
             });
             const raw = await response.json();
 
-            if (raw?.code !== undefined && raw.code !== 0) {
-                throw new Error(getBananaErrorMessage(raw));
-            }
-
-            const immediateUrl = extractBananaImageUrl(raw);
-            if (isBananaSucceeded(raw) && immediateUrl) {
-                return { imageUrl: immediateUrl, content: extractBananaContent(raw) };
-            }
+            const immediateUrl = resolveBananaApiResult(raw);
+            if (immediateUrl) return immediateUrl;
 
             const taskId = extractBananaTaskId(raw);
             if (!taskId) {
-                throw new Error(getBananaErrorMessage(raw) || '未能获取 Nano Banana 任务 ID，请检查 API 密钥与余额');
+                throw new Error(getBananaErrorMessage(raw) || '未能获取任务 ID，请检查 API 密钥与余额');
             }
 
             return pollBananaDrawResult(taskId, loaderId);
@@ -1239,12 +1234,8 @@
             updateBananaLoaderProgress(loaderId, 0, '已提交至 Grsai 国内节点，等待 nano-banana-fast 渲染…');
 
             try {
-                const { imageUrl } = await requestBananaDraw(promptText, loaderId);
+                const imageUrl = await requestBananaDraw(promptText, loaderId);
                 removeLoaderFromTimeline(loaderId);
-
-                if (!imageUrl) {
-                    throw new Error('未获取到图片地址');
-                }
                 await appendBananaImageToTimeline(imageUrl);
 
                 state.banana.lastGeneratedImage = { url: imageUrl };
@@ -1252,10 +1243,10 @@
                 state.banana.messages.push({ role: 'assistant', content: '', imageUrl });
                 clearSelectedAttachment();
             } catch (err) {
-                if (isAbortError(err)) return;
-                console.error(err);
                 removeLoaderFromTimeline(loaderId);
-                appendErrorMessageToTimeline(err.message);
+                if (isAbortError(err)) return;
+                console.error('Nano Banana:', err);
+                appendErrorMessageToTimeline(err.message || 'Nano Banana 图像生成失败');
             }
         }
 
