@@ -310,7 +310,7 @@
                             <div class="flex items-center gap-2">
                                 <button id="btn-pause-request" type="button" onclick="pauseActiveRequest()" disabled
                                     class="h-8 w-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition flex items-center justify-center opacity-40 cursor-not-allowed shadow-xs"
-                                    title="停止当前进行中的请求">
+                                    title="停止请求或中断输出">
                                     <i class="fa-solid fa-stop text-xs text-rose-500"></i>
                                 </button>
                                 <button onclick="handleSendMessage()" class="bg-gradient-to-tr from-brand-deepseek to-brand-accent hover:opacity-95 text-white font-bold h-8 px-4 rounded-lg transition flex items-center justify-center text-xs shadow-md">
@@ -1016,7 +1016,7 @@
 
 您刚刚发送的输入为：**“${promptText}”**。系统智能分流成功拦截，并在不强夺您鼠标滚动的前提下，输出本次流式交互动画！`;
 
-                appendStreamingMessageToTimeline('deepseek', simulatedContent, {
+                await appendStreamingMessageToTimeline('deepseek', simulatedContent, {
                     reasoning: simulatedReasoning
                 });
                 state.deepseek.messages.push({ role: 'user', content: promptText });
@@ -1033,7 +1033,7 @@
                 const mockImageUrl = `https://picsum.photos/${width}/${height}?random=${randomId}`;
                 const simulatedCaption = `这是 [Nano Banana] 针对您的指令 “${promptText}” 渲染而成的模拟图像。由于未检测到 BANANA_API_KEY，系统已自动调取本地模拟流渲染。`;
 
-                appendStreamingMessageToTimeline('banana', simulatedCaption, { imageUrl: mockImageUrl });
+                await appendStreamingMessageToTimeline('banana', simulatedCaption, { imageUrl: mockImageUrl });
 
                 state.banana.lastGeneratedImage = {
                     base64Data: "MOCK_BASE64",
@@ -1073,7 +1073,7 @@
                     const msg = data.choices[0].message;
                     
                     // 兼容官方思维链字段 reasoning_content
-                    appendStreamingMessageToTimeline('deepseek', msg.content, {
+                    await appendStreamingMessageToTimeline('deepseek', msg.content, {
                         reasoning: msg.reasoning_content || null
                     });
 
@@ -1248,7 +1248,7 @@
 
                 const caption = content?.trim()
                     || `已通过 **${BANANA_MODEL}** 完成绘制（宽高比：${aspect}）。`;
-                appendStreamingMessageToTimeline('banana', caption, { imageUrl });
+                await appendStreamingMessageToTimeline('banana', caption, { imageUrl });
 
                 state.banana.lastGeneratedImage = { url: imageUrl };
                 state.banana.messages.push({ role: 'user', content: promptText });
@@ -1264,6 +1264,7 @@
 
         // ==================== 流式打印机渲染层 (Streaming Output) ====================
         function appendStreamingMessageToTimeline(actor, fullText, options = {}) {
+            return new Promise((resolve) => {
             const container = document.getElementById('unified-conversation-container');
             const messageRow = document.createElement('div');
             messageRow.className = "flex items-start gap-3 animate-fade-in";
@@ -1356,13 +1357,21 @@
             const textEl = document.getElementById(uniqueMsgId);
             const reasoningEl = document.getElementById(uniqueReasoningId);
 
+            let streamDone = false;
+            function finishStreamOutput() {
+                if (streamDone) return;
+                streamDone = true;
+                if (textEl) textEl.classList.remove('typing-cursor');
+                resolve();
+            }
+
             function isStreamCancelled() {
                 return streamToken !== state.requestControl.streamToken;
             }
 
             function typeReasoning() {
                 if (isStreamCancelled()) {
-                    if (textEl) textEl.classList.remove('typing-cursor');
+                    finishStreamOutput();
                     return;
                 }
                 if (!options.reasoning || !state.advanced.showThinking || reasoningIndex >= options.reasoning.length) {
@@ -1379,12 +1388,10 @@
 
             function typeContent() {
                 if (isStreamCancelled()) {
-                    if (textEl) textEl.classList.remove('typing-cursor');
+                    finishStreamOutput();
                     return;
                 }
                 if (charIndex >= fullText.length) {
-                    if (textEl) textEl.classList.remove('typing-cursor');
-                    
                     if (options.imageUrl) {
                         const imgContainer = document.getElementById(uniqueImageContainerId);
                         if (imgContainer) {
@@ -1394,10 +1401,15 @@
                                 imgContainer.classList.add('opacity-100', 'translate-y-0');
                                 smartScrollToBottom();
                                 snapshotCurrentConversation();
+                                finishStreamOutput();
                             }, 50);
+                        } else {
+                            snapshotCurrentConversation();
+                            finishStreamOutput();
                         }
                     } else {
                         snapshotCurrentConversation();
+                        finishStreamOutput();
                     }
                     smartScrollToBottom();
                     return;
@@ -1418,6 +1430,7 @@
             } else {
                 typeContent();
             }
+            });
         }
 
         function appendMessageToTimeline(actor, text, options = {}) {
