@@ -72,6 +72,12 @@
         }
 
         /* 自定义下拉（替代原生 select） */
+        .custom-select {
+            position: relative;
+        }
+        .custom-select.is-open {
+            z-index: 60;
+        }
         .custom-select.is-open .custom-select-trigger {
             border-color: rgb(99 102 241 / 0.5);
             box-shadow: 0 0 0 3px rgb(99 102 241 / 0.12);
@@ -80,7 +86,17 @@
             transform: rotate(180deg);
         }
         .custom-select-menu {
+            z-index: 60;
             animation: dropdownIn 0.15s ease-out;
+        }
+        .input-toolbar-row {
+            position: relative;
+            z-index: 40;
+            overflow: visible;
+        }
+        .input-composer-row {
+            position: relative;
+            z-index: 0;
         }
         @keyframes dropdownIn {
             from { opacity: 0; transform: translateY(-4px) scale(0.98); }
@@ -211,14 +227,14 @@
                 </div>
 
                 <!-- 组合式高级输入控制底栏 -->
-                <div class="bg-white border border-slate-200 dark:bg-brand-darkcard dark:border-slate-800/80 rounded-2xl shadow-lg p-3 md:p-4 mb-4 transition-all duration-300 flex flex-col gap-3">
+                <div class="bg-white border border-slate-200 dark:bg-brand-darkcard dark:border-slate-800/80 rounded-2xl shadow-lg p-3 md:p-4 mb-4 transition-all duration-300 flex flex-col gap-3 overflow-visible">
                     
                     <!-- 第一行：路由模式与长宽比微调栏 -->
-                    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                    <div class="input-toolbar-row flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-2.5">
                         
                         <!-- 模型与引擎调度器 -->
-                        <div class="flex flex-wrap items-center gap-2">
-                            <div class="custom-select relative z-20" data-select="router-mode">
+                        <div class="flex flex-wrap items-center gap-2 overflow-visible">
+                            <div class="custom-select" data-select="router-mode">
                                 <button type="button" class="custom-select-trigger flex items-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold py-1.5 pl-3 pr-2.5 rounded-xl border border-slate-200 dark:border-slate-700 outline-none transition cursor-pointer min-w-[148px]">
                                     <span class="custom-select-label flex-1 text-left truncate">✨ 智能自动分流</span>
                                     <i class="fa-solid fa-chevron-down custom-select-chevron text-[9px] text-slate-400 transition-transform duration-200"></i>
@@ -232,9 +248,9 @@
                             </div>
 
                             <!-- 动态切换的子参数栏 (根据模型动态展示) -->
-                            <div id="deepseek-sub-options" class="flex items-center gap-1.5 transition duration-200">
-                                <span class="text-[10px] text-slate-400">| 语言模型:</span>
-                                <div class="custom-select relative z-10" data-select="deepseek-model">
+                            <div id="deepseek-sub-options" class="flex items-center gap-1.5 transition duration-200 overflow-visible">
+                                <span class="text-[10px] text-slate-400 shrink-0">| 语言模型:</span>
+                                <div class="custom-select" data-select="deepseek-model">
                                     <button type="button" class="custom-select-trigger flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-2 pr-1.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 outline-none transition cursor-pointer min-w-[168px]">
                                         <span class="custom-select-label flex-1 text-left truncate">deepseek-chat (V3 极速)</span>
                                         <i class="fa-solid fa-chevron-down custom-select-chevron text-[8px] text-slate-400 transition-transform duration-200"></i>
@@ -258,7 +274,7 @@
                         <!-- 右侧参数：生图宽高比 -->
                         <div id="aspect-ratio-wrapper" class="flex items-center gap-2 transition-all duration-300">
                             <label class="text-[11px] text-slate-500 font-bold uppercase tracking-wider">画面宽高比:</label>
-                            <div class="custom-select relative z-10" data-select="banana-aspect">
+                            <div class="custom-select" data-select="banana-aspect">
                                 <button type="button" class="custom-select-trigger flex items-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-xl pl-2.5 pr-2 py-1 text-xs font-semibold outline-none transition cursor-pointer min-w-[120px]">
                                     <span class="custom-select-label flex-1 text-left">16:9 (宽屏)</span>
                                     <i class="fa-solid fa-chevron-down custom-select-chevron text-[9px] text-slate-400 transition-transform duration-200"></i>
@@ -276,7 +292,7 @@
                     </div>
 
                     <!-- 第二行：融合在一框之内的消息主输入组 (包含内置图片预览、输入区与工具底栏) -->
-                    <div class="border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 rounded-xl p-2 flex flex-col transition-all duration-300 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500">
+                    <div class="input-composer-row border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 rounded-xl p-2 flex flex-col transition-all duration-300 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500">
                         
                         <!-- 内置：图片附件预览条 -->
                         <div id="input-attachment-preview-bar" class="hidden flex items-center gap-2 px-2 pb-2 mb-2 border-b border-slate-200/60 dark:border-slate-800">
