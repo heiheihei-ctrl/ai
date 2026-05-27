@@ -197,7 +197,7 @@
                             <h2 class="font-bold text-slate-800 dark:text-white text-sm md:text-base">欢迎使用 AI 统一协同网桥</h2>
                         </div>
                         <p class="text-xs md:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                            本系统已打通 **DeepSeek 官方直连 API** 与 **Nano Banana 海外网关**。您可以轻松体验一站式的超强文本思考与极速绘图。
+                            本系统已打通 **DeepSeek 官方直连 API** 与 **Nano Banana 国内直连节点**（grsai.dakka.com.cn）。您可以轻松体验一站式的超强文本思考与极速绘图。
                         </p>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
                             <div class="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-100 dark:border-slate-800 text-[11px] md:text-xs text-slate-500 dark:text-slate-400">
@@ -317,10 +317,17 @@
                                 </span>
                             </div>
 
-                            <!-- 发送按钮 -->
-                            <button onclick="handleSendMessage()" class="bg-gradient-to-tr from-brand-deepseek to-brand-accent hover:opacity-95 text-white font-bold h-8 px-4 rounded-lg transition flex items-center justify-center text-xs shadow-md">
-                                <i class="fa-solid fa-paper-plane mr-1.5"></i> 发送
-                            </button>
+                            <div class="flex items-center gap-2">
+                                <button id="btn-pause-request" type="button" onclick="pauseActiveRequest()" disabled
+                                    class="h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 font-bold text-xs transition flex items-center justify-center gap-1.5 opacity-40 cursor-not-allowed shadow-xs"
+                                    title="停止当前进行中的请求">
+                                    <i class="fa-solid fa-stop text-[10px] text-rose-500"></i>
+                                    <span>停止</span>
+                                </button>
+                                <button onclick="handleSendMessage()" class="bg-gradient-to-tr from-brand-deepseek to-brand-accent hover:opacity-95 text-white font-bold h-8 px-4 rounded-lg transition flex items-center justify-center text-xs shadow-md">
+                                    <i class="fa-solid fa-paper-plane mr-1.5"></i> 发送
+                                </button>
+                            </div>
                         </div>
 
                     </div>
@@ -342,8 +349,8 @@
         const IS_AUTO_DEMO_IF_NO_KEY = true;
 
         const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
-        // Grsai Nano Banana 绘画 API（见 https://grsai.ai/zh/dashboard/documents/nano-banana）
-        const BANANA_API_HOST = "https://grsai.ai";
+        // Grsai Nano Banana 国内直连（绘画 / 结果查询）
+        const BANANA_API_HOST = "https://grsai.dakka.com.cn";
         const BANANA_DRAW_URL = `${BANANA_API_HOST}/v1/draw/nano-banana`;
         const BANANA_RESULT_URL = `${BANANA_API_HOST}/v1/draw/result`;
         const BANANA_MODEL = "nano-banana-fast";
@@ -368,6 +375,12 @@
                 temperature: 0.7,
                 maxTokens: 2048,
                 showThinking: true
+            },
+            requestControl: {
+                abortController: null,
+                loaderId: null,
+                isActive: false,
+                streamToken: 0
             }
         };
 
@@ -843,8 +856,76 @@
             notify("所有模型会话上下文已成功复位。", "info");
         }
 
+        function getActiveAbortSignal() {
+            return state.requestControl.abortController?.signal || null;
+        }
+
+        function isAbortError(err) {
+            return err?.name === 'AbortError' || err?.message === 'The user aborted a request.';
+        }
+
+        function abortableDelay(ms, signal) {
+            return new Promise((resolve, reject) => {
+                if (signal?.aborted) {
+                    reject(new DOMException('Aborted', 'AbortError'));
+                    return;
+                }
+                const timer = setTimeout(resolve, ms);
+                if (signal) {
+                    signal.addEventListener('abort', () => {
+                        clearTimeout(timer);
+                        reject(new DOMException('Aborted', 'AbortError'));
+                    }, { once: true });
+                }
+            });
+        }
+
+        function updatePauseButtonState(active) {
+            const btn = document.getElementById('btn-pause-request');
+            if (!btn) return;
+            btn.disabled = !active;
+            btn.classList.toggle('opacity-40', !active);
+            btn.classList.toggle('cursor-not-allowed', !active);
+            btn.classList.toggle('hover:bg-slate-50', active);
+            btn.classList.toggle('dark:hover:bg-slate-700', active);
+            btn.classList.toggle('text-rose-600', active);
+            btn.classList.toggle('dark:text-rose-400', active);
+            btn.classList.toggle('border-rose-200', active);
+            btn.classList.toggle('dark:border-rose-900/40', active);
+        }
+
+        function startRequestSession(loaderId) {
+            state.requestControl.abortController = new AbortController();
+            state.requestControl.loaderId = loaderId;
+            state.requestControl.isActive = true;
+            updatePauseButtonState(true);
+        }
+
+        function endRequestSession() {
+            state.requestControl.abortController = null;
+            state.requestControl.loaderId = null;
+            state.requestControl.isActive = false;
+            updatePauseButtonState(false);
+        }
+
+        function pauseActiveRequest() {
+            if (!state.requestControl.isActive) return;
+            state.requestControl.streamToken++;
+            state.requestControl.abortController?.abort();
+            if (state.requestControl.loaderId) {
+                removeLoaderFromTimeline(state.requestControl.loaderId);
+            }
+            endRequestSession();
+            notify('已停止当前请求', 'info');
+        }
+
         // 带退避指数的容错网络请求；useCorsProxy=true 时经 corsproxy 转发（用于 Grsai 等未开放 CORS 的接口）
         async function fetchWithExponentialBackoff(url, options, retries = 3, delay = 1000, useCorsProxy = false) {
+            const signal = options?.signal;
+            if (signal?.aborted) {
+                throw new DOMException('Aborted', 'AbortError');
+            }
+
             const isLocal = url.includes('localhost') || url.includes('127.0.0.1');
             const requestUrl = (!useCorsProxy || isLocal)
                 ? url
@@ -873,11 +954,12 @@
                 }
                 return res;
             } catch (err) {
+                if (isAbortError(err)) throw err;
                 if (err.message.startsWith("ERR_BALANCE") || err.message.startsWith("ERR_AUTH")) {
                     throw err;
                 }
                 if (retries > 0) {
-                    await new Promise(resolve => setTimeout(resolve, delay));
+                    await abortableDelay(delay, signal);
                     return fetchWithExponentialBackoff(url, options, retries - 1, delay * 2, useCorsProxy);
                 }
                 throw err;
@@ -905,23 +987,35 @@
             inputEl.value = '';
 
             const loaderId = appendLoadingIndicatorToTimeline(targetEngine);
+            startRequestSession(loaderId);
 
-            // 智能免 Key 演示模式启动条件
-            const isNoKeyDefined = (targetEngine === 'deepseek' && !DEEPSEEK_API_KEY) || (targetEngine === 'banana' && !BANANA_API_KEY);
-            if (IS_AUTO_DEMO_IF_NO_KEY && isNoKeyDefined) {
-                await executeDemoRequest(userPrompt, loaderId, targetEngine);
-                return;
-            }
+            try {
+                // 智能免 Key 演示模式启动条件
+                const isNoKeyDefined = (targetEngine === 'deepseek' && !DEEPSEEK_API_KEY) || (targetEngine === 'banana' && !BANANA_API_KEY);
+                if (IS_AUTO_DEMO_IF_NO_KEY && isNoKeyDefined) {
+                    await executeDemoRequest(userPrompt, loaderId, targetEngine);
+                    return;
+                }
 
-            if (targetEngine === 'deepseek') {
-                await executeDeepSeekRequest(userPrompt, loaderId);
-            } else {
-                await executeNanoBananaRequest(userPrompt, loaderId);
+                if (targetEngine === 'deepseek') {
+                    await executeDeepSeekRequest(userPrompt, loaderId);
+                } else {
+                    await executeNanoBananaRequest(userPrompt, loaderId);
+                }
+            } finally {
+                if (state.requestControl.isActive) {
+                    endRequestSession();
+                }
             }
         }
 
         async function executeDemoRequest(promptText, loaderId, engine) {
-            await new Promise(resolve => setTimeout(resolve, 1200));
+            try {
+                await abortableDelay(1200, getActiveAbortSignal());
+            } catch (err) {
+                if (isAbortError(err)) return;
+                throw err;
+            }
             removeLoaderFromTimeline(loaderId);
 
             if (engine === 'deepseek') {
@@ -986,7 +1080,8 @@
                             'Content-Type': 'application/json',
                             'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
                         },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify(payload),
+                        signal: getActiveAbortSignal()
                     },
                     3,
                     1000,
@@ -1012,6 +1107,10 @@
                     throw new Error("未能从 DeepSeek 官方接口获取正常格式的文本返回。请核对官方 API 密钥或账户余额。");
                 }
             } catch (err) {
+                if (isAbortError(err)) {
+                    state.deepseek.messages.pop();
+                    return;
+                }
                 console.error(err);
                 removeLoaderFromTimeline(loaderId);
                 appendErrorMessageToTimeline(err.message);
@@ -1019,7 +1118,7 @@
             }
         }
 
-        // ==================== Nano Banana 绘画 API（Grsai 官方文档） ====================
+        // ==================== Nano Banana 绘画 API（Grsai 国内直连） ====================
         function buildBananaDrawPayload(promptText) {
             const aspect = document.getElementById('banana-aspect').value;
             const payload = {
@@ -1062,15 +1161,18 @@
                 'Authorization': `Bearer ${BANANA_API_KEY}`
             };
 
+            const signal = getActiveAbortSignal();
+
             for (let attempt = 0; attempt < maxAttempts; attempt++) {
-                await new Promise(r => setTimeout(r, attempt === 0 ? 800 : 2000));
+                await abortableDelay(attempt === 0 ? 800 : 2000, signal);
 
                 const res = await fetchWithExponentialBackoff(
                     BANANA_RESULT_URL,
                     {
                         method: 'POST',
                         headers,
-                        body: JSON.stringify({ id: taskId })
+                        body: JSON.stringify({ id: taskId }),
+                        signal
                     },
                     3,
                     1000,
@@ -1105,7 +1207,8 @@
                 {
                     method: 'POST',
                     headers,
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(payload),
+                    signal: getActiveAbortSignal()
                 },
                 3,
                 1000,
@@ -1128,7 +1231,7 @@
 
         async function executeNanoBananaRequest(promptText, loaderId) {
             const aspect = document.getElementById('banana-aspect').value;
-            updateBananaLoaderProgress(loaderId, 0, '已提交至 Grsai 绘画接口，等待 nano-banana-fast 渲染…');
+            updateBananaLoaderProgress(loaderId, 0, '已提交至 Grsai 国内节点，等待 nano-banana-fast 渲染…');
 
             try {
                 const { imageUrl, content } = await requestBananaDraw(promptText, loaderId);
@@ -1143,6 +1246,7 @@
                 state.banana.messages.push({ role: 'assistant', content: caption, imageUrl });
                 clearSelectedAttachment();
             } catch (err) {
+                if (isAbortError(err)) return;
                 console.error(err);
                 removeLoaderFromTimeline(loaderId);
                 appendErrorMessageToTimeline(err.message);
@@ -1220,11 +1324,20 @@
             let reasoningIndex = 0;
             
             const typingSpeed = 10;
+            const streamToken = state.requestControl.streamToken;
             
             const textEl = document.getElementById(uniqueMsgId);
             const reasoningEl = document.getElementById(uniqueReasoningId);
 
+            function isStreamCancelled() {
+                return streamToken !== state.requestControl.streamToken;
+            }
+
             function typeReasoning() {
+                if (isStreamCancelled()) {
+                    if (textEl) textEl.classList.remove('typing-cursor');
+                    return;
+                }
                 if (!options.reasoning || !state.advanced.showThinking || reasoningIndex >= options.reasoning.length) {
                     typeContent();
                     return;
@@ -1238,6 +1351,10 @@
             }
 
             function typeContent() {
+                if (isStreamCancelled()) {
+                    if (textEl) textEl.classList.remove('typing-cursor');
+                    return;
+                }
                 if (charIndex >= fullText.length) {
                     if (textEl) textEl.classList.remove('typing-cursor');
                     
