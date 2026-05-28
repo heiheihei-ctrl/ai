@@ -116,13 +116,13 @@
 <body class="h-full transition-colors duration-300 bg-slate-50 text-slate-800 dark:bg-brand-darkbg dark:text-slate-200 font-sans selection:bg-brand-accent/30 overflow-hidden">
     
     <!-- 通知弹窗系统容器 -->
-    <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-3 max-w-md"></div>
+    <div id="toast-container" class="fixed top-5 right-5 z-[10000] flex flex-col gap-3 max-w-md"></div>
 
     <!-- 主程序布局架构 -->
     <div class="flex h-screen overflow-hidden">
         
         <!-- 左侧历史对话侧边栏 -->
-        <aside id="sidebar-panel" class="fixed inset-y-0 left-0 z-30 flex flex-col w-64 lg:w-64 bg-white border-r border-slate-200 dark:bg-brand-darkcard dark:border-slate-800 transform -translate-x-full lg:translate-x-0 lg:static transition-all duration-300 ease-in-out shadow-lg lg:shadow-none flex-shrink-0 overflow-hidden">
+        <aside id="sidebar-panel" class="fixed inset-y-0 left-0 z-[9999] flex flex-col w-64 lg:w-64 bg-white border-r border-slate-200 dark:bg-brand-darkcard dark:border-slate-800 transform -translate-x-full lg:translate-x-0 lg:static lg:z-[9999] transition-all duration-300 ease-in-out shadow-lg lg:shadow-none flex-shrink-0 overflow-hidden">
             <!-- 伸缩层宽度锁定容器 -->
             <div class="w-64 h-full flex flex-col flex-shrink-0">
                 <!-- 侧边栏头部 -->
@@ -151,7 +151,7 @@
         </aside>
 
         <!-- 背景遮罩层（仅移动端激活侧边栏时展示） -->
-        <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 z-20 bg-black/50 backdrop-blur-xs hidden lg:hidden"></div>
+        <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-xs hidden lg:hidden"></div>
 
         <!-- 右侧主对话视窗区 -->
         <div class="flex-1 flex flex-col h-full overflow-hidden">
